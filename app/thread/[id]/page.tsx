@@ -344,7 +344,7 @@ export default function ChatRoomThreadView() {
   const participantCount = participants.length;
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex">
         <div className="flex-1 flex flex-col">
@@ -365,11 +365,9 @@ export default function ChatRoomThreadView() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2 mb-0.5">
                       <Pin className="h-4 w-4 text-blue-600 shrink-0" />
-                      <h1 className="font-bold text-base truncate">
-                        {thread.title}
-                      </h1>
+                      <h1 className="">{thread.title}</h1>
                     </div>
-                    <div className="flex items-center space-x-3 text-xs text-gray-600">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
                       <Badge
                         className={`${getCategoryColor(
                           thread.category
@@ -428,7 +426,7 @@ export default function ChatRoomThreadView() {
           <div className="flex-1 flex overflow-y-auto scrollbar-none">
             {/* CHAT MESSAGES AREA */}
             <div className="flex-1 overflow-y-auto bg-stone-100 scrollbar-none">
-              <div className="max-w-8xl mx-auto p-4 space-y-2">
+              <div className="max-w-8xl mx-auto p-3 sm:p-4 space-y-2">
                 {/* THREAD STARTER */}
                 <Card className="bg-linear-to-br from-blue-50 to-purple-50 border-blue-200 shadow-sm">
                   <CardContent className="p-3">
@@ -527,7 +525,7 @@ export default function ChatRoomThreadView() {
                       )}
 
                       <div
-                        className={`flex-1 max-w-lg ${
+                        className={`flex-1 max-w-[85%] sm:max-w-lg ${
                           isMyMessage ? "items-end" : "items-start"
                         } flex flex-col`}
                       >
@@ -629,7 +627,7 @@ export default function ChatRoomThreadView() {
                                   content: reply.content,
                                 })
                               }
-                              className="absolute -right-12 top-0 opacity-0 group-hover:opacity-100 transition-opacity h-6 px-2"
+                              className=" opacity-0 group-hover:opacity-100 transition-opacity h-6 px-2"
                             >
                               <ReplyIcon className="h-3 w-3" />
                             </Button>
@@ -646,7 +644,7 @@ export default function ChatRoomThreadView() {
           </div>
 
           {/* MESSAGE INPUT */}
-          <div className="bg-white border-t shadow-lg p-4 max-w-6xl w-[90%] mx-auto rounded-4xl mb-3">
+          <div className="bg-white border-t shadow-lg p-3 sm:p-4 max-w-6xl w-[90%] sm:w-[90%] mx-auto rounded-3xl sm:rounded-4xl mb-2">
             <div className="">
               {/* Reply Banner */}
               {replyingTo && (
@@ -718,7 +716,7 @@ export default function ChatRoomThreadView() {
                       placeholder="Type a message..."
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      className="flex-1 h-8 text-sm"
+                      className="flex-1 h-9 text-sm"
                       disabled={isSubmitting}
                     />
 
@@ -740,7 +738,7 @@ export default function ChatRoomThreadView() {
         </div>
         {/* RIGHT SIDEBAR - ROOM INFO */}
         {showInfo && (
-          <div className="w-80 border-l bg-slate-100 overflow-auto ">
+          <div className="hidden lg:block w-80 border-l bg-slate-100 overflow-auto ">
             <div className="p-3 space-y-3">
               {/* Room Details */}
               <div>
