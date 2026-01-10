@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
+
 import {
   Select,
   SelectContent,
@@ -175,9 +177,11 @@ export default function ProfilePage() {
 
   return (
     <div className="flex h-screen bg-slate-50">
-      <Sidebar />
+      <div className="hidden lg:block">
+        <Sidebar />
+      </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto pb-20 lg:pb-0">
         <PageTransition>
           <div className="max-w-8xl mx-auto p-8 space-y-8">
             {/* PROFILE HEADER CARD */}
@@ -264,7 +268,7 @@ export default function ProfilePage() {
                   </div>
 
                   {/* Edit Button */}
-                  <div className="flex space-x-2">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-4 md:mt-0">
                     {!isEditing ? (
                       <Button
                         variant="secondary"
@@ -301,7 +305,7 @@ export default function ProfilePage() {
             </Card>
 
             {/* STATISTICS GRID */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid  grid-cols-2 md:grid-cols-4 gap-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-gray-600">
@@ -376,7 +380,7 @@ export default function ProfilePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                   <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
                     <CheckCircle2 className="h-8 w-8 text-blue-500" />
                     <div>
@@ -417,14 +421,14 @@ export default function ProfilePage() {
             {/* MY THREADS SECTION */}
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <CardTitle>My Threads ({totalThreads})</CardTitle>
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                     <Select>
                       <span className="text-xs text-gray-600 mt-3">
                         Category :
                       </span>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-full sm:w-[180px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -451,7 +455,7 @@ export default function ProfilePage() {
                         onClick={() => router.push(`/thread/${thread.id}`)}
                         className="p-4 border rounded-lg hover:shadow-md transition-shadow cursor-pointer"
                       >
-                        <div className="flex items-start justify-between mb-2">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
                           <h3 className="font-semibold text-lg">
                             {thread.title}
                           </h3>
@@ -468,7 +472,7 @@ export default function ProfilePage() {
                           {thread.content}
                         </p>
 
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <div className="flex flex-wrap gap-3 text-sm text-gray-500">
                           <span className="flex items-center">
                             <MessageSquare className="h-4 w-4 mr-1" />
                             {thread.replies} replies
@@ -493,6 +497,7 @@ export default function ProfilePage() {
           </div>
         </PageTransition>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }

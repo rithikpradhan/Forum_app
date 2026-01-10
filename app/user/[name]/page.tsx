@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 import {
   ArrowLeft,
@@ -130,9 +131,11 @@ export default function PublicUserProfilePage() {
 
   return (
     <div className="flex h-screen bg-slate-50">
-      <Sidebar />
+      <div className="hidden lg:block">
+        <Sidebar />
+      </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto pb-20 lg:pb-0">
         <div className="max-w-8xl mx-auto p-8 space-y-8">
           {/* Back Button */}
           <Button variant="ghost" onClick={() => router.back()}>
@@ -279,6 +282,7 @@ export default function PublicUserProfilePage() {
           </Card>
         </div>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }

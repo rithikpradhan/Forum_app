@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Search, MessageSquare, Eye, Clock, Filter } from "lucide-react";
+import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 type Thread = {
   id: number;
@@ -198,9 +199,11 @@ export default function ExplorePage() {
 
   return (
     <div className="flex h-screen bg-slate-50">
-      <Sidebar />
+      <div className="hidden lg:block">
+        <Sidebar />
+      </div>
 
-      <div className="flex-1 overflow-auto bg-stone-100">
+      <div className="flex-1 overflow-auto bg-stone-100 pb-20 lg:pb-0">
         <PageTransition>
           <div className="max-w-8xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8">
             {/* Header */}
@@ -390,6 +393,7 @@ export default function ExplorePage() {
           </div>
         </PageTransition>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }

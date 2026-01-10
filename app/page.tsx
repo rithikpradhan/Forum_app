@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 export default function LandingPage() {
   // useRouter lets us navigate to different pages programmatically

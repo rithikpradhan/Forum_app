@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Eye, Layers, TrendingUp } from "lucide-react";
@@ -149,7 +150,7 @@ export default function CategoriesPage() {
     <div className="flex h-screen bg-slate-50">
       <Sidebar />
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto pb-20 lg:pb-0">
         <PageTransition>
           <div className="max-w-8xl mx-auto p-8 space-y-8">
             {/* Header */}
@@ -299,6 +300,7 @@ export default function CategoriesPage() {
           </div>
         </PageTransition>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }
