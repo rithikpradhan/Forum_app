@@ -76,7 +76,7 @@ export default function ExplorePage() {
           category: "Announcement",
           replies: 24,
           views: 320,
-          createdAt: "3 days ago",
+          createdAt: Date.now(),
         },
 
         {
@@ -88,7 +88,7 @@ export default function ExplorePage() {
           category: "Question",
           replies: 15,
           views: 189,
-          createdAt: "1 day ago",
+          createdAt: Date.now(),
         },
 
         {
@@ -100,7 +100,7 @@ export default function ExplorePage() {
           category: "Showcase",
           replies: 8,
           views: 156,
-          createdAt: "5 hours ago",
+          createdAt: Date.now(),
         },
         {
           id: 4,
@@ -111,7 +111,7 @@ export default function ExplorePage() {
           category: "Tutorial",
           replies: 31,
           views: 445,
-          createdAt: "2 days ago",
+          createdAt: Date.now(),
         },
         {
           id: 5,
@@ -122,7 +122,7 @@ export default function ExplorePage() {
           category: "Discussion",
           replies: 19,
           views: 278,
-          createdAt: "12 hours ago",
+          createdAt: Date.now(),
         },
       ];
       setThreads(sampleThreads);
