@@ -54,16 +54,16 @@ export default function TrendingPage() {
     setLoading(false);
   }, [router]);
 
-  const getInitials = (name: string) => {
-    return (
-      name
-        // .split(" ")
-        .map((w) => w[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
-    );
-  };
+  // const getInitials = (name: string) => {
+  //   return (
+  //     name
+  //       // .split(" ")
+  //       .map((w) => w[0])
+  //       .join("")
+  //       .toUpperCase()
+  //       .slice(0, 2)
+  //   );
+  // };
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
