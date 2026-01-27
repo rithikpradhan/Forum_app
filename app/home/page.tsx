@@ -22,15 +22,17 @@ import { Search, MessageSquare, Eye, Clock, Filter } from "lucide-react";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 type Thread = {
-  id: number;
+  _id: string;
   title: string;
   content: string;
-  author: string;
-  avatar?: string;
   category: string;
-  replies: number;
+  createdAt: string;
   views: number;
-  createdAt: number;
+  replies: number;
+  author: {
+    _id: string;
+    name: string;
+  };
 };
 
 export default function ExplorePage() {
@@ -51,100 +53,65 @@ export default function ExplorePage() {
     "Announcement",
   ];
 
-  // Check authentication and load all threads
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
       router.push("/");
       return;
     }
 
-    // Load all threads
-    const storedThreads = localStorage.getItem("threads");
-    if (storedThreads) {
-      const allThreads = JSON.parse(storedThreads);
-      setThreads(allThreads);
-      setFilteredThreads(allThreads);
-    } else {
-      // Create sample threads if none exist
-      const sampleThreads: Thread[] = [
-        {
-          id: 1,
-          title: "Welcome to ForumHub!",
-          content:
-            "This is the beginning of our amazing community. Feel free to share your ideas!",
-          author: "Admin",
-          category: "Announcement",
-          replies: 24,
-          views: 320,
-          createdAt: Date.now(),
-        },
+    const verifyUser = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/auth/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-        {
-          id: 2,
-          title: "Best practices for React hooks?",
-          content:
-            "I am learning React hooks and would love to hear your tips on useState and useEffect.",
-          author: "Sarah Chen",
-          category: "Question",
-          replies: 15,
-          views: 189,
-          createdAt: Date.now(),
-        },
+        if (!res.ok) {
+          localStorage.removeItem("token");
+          router.push("/");
+          return;
+        }
 
-        {
-          id: 3,
-          title: "Built a weather app with Next.js",
-          content:
-            "Just finished my weather app project using Next.js 14 and TypeScript. Check it out!",
-          author: "Mike Johnson",
-          category: "Showcase",
-          replies: 8,
-          views: 156,
-          createdAt: Date.now(),
-        },
-        {
-          id: 4,
-          title: "Complete TypeScript tutorial series",
-          content:
-            "Starting a series on TypeScript fundamentals. Part 1 covers types and interfaces.",
-          author: "Emily Davis",
-          category: "Tutorial",
-          replies: 31,
-          views: 445,
-          createdAt: Date.now(),
-        },
-        {
-          id: 5,
-          title: "Thoughts on Server Components vs Client Components",
-          content:
-            "Let us discuss the trade-offs between Server and Client Components in Next.js 14.",
-          author: "Alex Kim",
-          category: "Discussion",
-          replies: 19,
-          views: 278,
-          createdAt: Date.now(),
-        },
-      ];
-      setThreads(sampleThreads);
-      setFilteredThreads(sampleThreads);
-      localStorage.setItem("threads", JSON.stringify(sampleThreads));
-    }
+        // User is valid → now load threads
+        fetchThreads();
+      } catch (err) {
+        console.error(err);
+        router.push("/");
+      }
+    };
 
-    setLoading(false);
+    verifyUser();
   }, [router]);
 
-  const getAvatarForAuthor = (authorName: string) => {
-    const storedUser = localStorage.getItem("user");
-    if (!storedUser) return null;
+  const fetchThreads = async () => {
+    try {
+      const token = localStorage.getItem("token");
 
-    const user = JSON.parse(storedUser);
+      const res = await fetch("http://localhost:5000/api/threads", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    if (user.name === authorName && user.avatar) {
-      return user.avatar; // latest avatar
+      // if (!res.ok) {
+      //   throw new Error("Failed to fetch threads");
+      // }
+
+      const data = await res.json();
+      setThreads(data.threads);
+      setFilteredThreads(data.threads);
+    } catch (err) {
+      console.error(err);
+
+      // Temporary fallback (until backend threads ready)
+      setThreads([]);
+      setFilteredThreads([]);
+    } finally {
+      setLoading(false);
     }
-
-    return null; // fallback to initials
   };
 
   // Filter threads based on search and category
@@ -162,7 +129,7 @@ export default function ExplorePage() {
         (thread) =>
           thread.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
           thread.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          thread.author.toLowerCase().includes(searchQuery.toLowerCase())
+          thread.author.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
@@ -186,6 +153,7 @@ export default function ExplorePage() {
       Showcase: "bg-orange-500",
       Tutorial: "bg-pink-500",
     };
+
     return colors[category] || "bg-gray-500";
   };
 
@@ -275,31 +243,23 @@ export default function ExplorePage() {
                   {filteredThreads.length > 0 ? (
                     filteredThreads.map((thread) => (
                       <Card
-                        key={thread.id}
+                        key={thread._id}
                         className="hover:shadow-lg transition-shadow cursor-pointer"
-                        onClick={() => router.push(`/thread/${thread.id}`)}
+                        onClick={() => router.push(`/thread/${thread._id}`)}
                       >
                         <CardHeader>
                           <div className="flex flex-col sm:flex-row sm:items-start sm:space-x-4 gap-3">
                             <div className="flex items-center justify-between sm:block">
                               <Avatar className="w-10 h-10">
-                                {getAvatarForAuthor(thread.author) ? (
-                                  <img
-                                    src={getAvatarForAuthor(thread.author)}
-                                    alt={`${thread.author} avatar`}
-                                    className="rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <AvatarFallback className="bg-linear-to-br from-blue-500 to-purple-500 text-white">
-                                    {getInitials(thread.author)}
-                                  </AvatarFallback>
-                                )}
+                                <AvatarFallback className="bg-linear-to-br from-blue-500 to-purple-500 text-white">
+                                  {getInitials(thread.author.name)}
+                                </AvatarFallback>
                               </Avatar>
 
                               {/* Mobile-only Badge */}
                               <Badge
                                 className={`sm:hidden ${getCategoryColor(
-                                  thread.category
+                                  thread.category,
                                 )} text-white`}
                               >
                                 {thread.category}
@@ -311,7 +271,7 @@ export default function ExplorePage() {
                                 {thread.title}
                                 <Badge
                                   className={`hidden sm:inline-flex ${getCategoryColor(
-                                    thread.category
+                                    thread.category,
                                   )} text-white`}
                                 >
                                   {thread.category}
@@ -320,7 +280,7 @@ export default function ExplorePage() {
 
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600">
                                 <span className="font-medium">
-                                  {thread.author}
+                                  {thread.author.name}
                                 </span>
                                 <span>•</span>
                                 <span className="flex items-center">
@@ -333,18 +293,8 @@ export default function ExplorePage() {
                                       year: "numeric",
                                       hour: "2-digit",
                                       minute: "2-digit",
-                                    }
+                                    },
                                   )}
-                                </span>
-                                <span>•</span>
-                                <span className="flex items-center">
-                                  <MessageSquare className="h-4 w-4 mr-1" />
-                                  {thread.replies}
-                                </span>
-                                <span>•</span>
-                                <span className="flex items-center">
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  {thread.views}
                                 </span>
                               </div>
                             </div>

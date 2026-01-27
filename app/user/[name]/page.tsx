@@ -59,7 +59,7 @@ export default function PublicUserProfilePage() {
       const threads = allThreads.filter((t: Thread) => t.author === username);
 
       if (threads.length === 0) {
-        // Check if user exists in replies
+        // Checking if user exists in replies
         const storedReplies = localStorage.getItem("replies");
         if (storedReplies) {
           const allReplies = JSON.parse(storedReplies);
@@ -144,11 +144,11 @@ export default function PublicUserProfilePage() {
           </Button>
 
           {/* Profile Header */}
-          <Card className="shadow-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+          <Card className="shadow-lg bg-linear-to-r from-indigo-500 to-purple-600 text-white">
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
                 <Avatar className="h-32 w-32 border-4 border-white shadow-xl">
-                  <AvatarFallback className="bg-gradient-to-br from-indigo-700 to-purple-700 text-white text-4xl">
+                  <AvatarFallback className="bg-linear-to-br from-indigo-700 to-purple-700 text-white text-4xl">
                     {getInitials(username)}
                   </AvatarFallback>
                 </Avatar>
@@ -247,7 +247,7 @@ export default function PublicUserProfilePage() {
                         </h3>
                         <Badge
                           className={`${getCategoryColor(
-                            thread.category
+                            thread.category,
                           )} text-white`}
                         >
                           {thread.category}

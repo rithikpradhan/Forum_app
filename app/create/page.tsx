@@ -24,19 +24,14 @@ import { useRef } from "react";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 import { toast } from "sonner";
-import { create } from "domain";
 
 type Thread = {
-  id: number;
+  _id: string;
   title: string;
   content: string;
-  avatar?: string;
   author: string;
   category: string;
-  replies: number;
-  views: number;
-  createdAt: number;
-  image?: string;
+  createdAt: string;
 };
 
 export default function CreateThreadPage() {
@@ -70,13 +65,36 @@ export default function CreateThreadPage() {
 
   // Check authentication
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) {
+    const token = localStorage.getItem("token");
+    if (!token) {
       router.push("/");
       return;
     }
-    setUser(JSON.parse(userData));
-    setLoading(false);
+
+    const verifyUser = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/auth/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          localStorage.removeItem("token");
+          router.push("/");
+          return;
+        }
+
+        const userData = await res.json();
+        setUser(userData);
+        setLoading(false);
+      } catch (err) {
+        console.error(err);
+        router.push("/");
+      }
+    };
+
+    verifyUser();
   }, [router]);
 
   // Handle image upload
@@ -98,54 +116,50 @@ export default function CreateThreadPage() {
   };
 
   // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.title || !formData.content) {
+      toast.error("Title and Content are required.");
+      return;
+    }
+
     setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem("token");
 
-    // Simulate API delay (in real app, this would be an API call)
-    setTimeout(() => {
-      // Get existing threads
-      const storedThreads = localStorage.getItem("threads");
-      const threads: Thread[] = storedThreads ? JSON.parse(storedThreads) : [];
-
-      // Create new thread object
-      const newThread: Thread = {
-        id: threads.length + 1,
-        title: formData.title,
-        content: formData.content,
-        author: user!.name,
-        avatar: user!.avatar,
-        category: formData.category,
-        replies: 0,
-        views: 0,
-        createdAt: Date.now(),
-        image: imagePreview || undefined,
-      };
-
-      // Add to threads array
-      threads.unshift(newThread); // Add to beginning
-
-      // Save back to localStorage
-      localStorage.setItem("threads", JSON.stringify(threads));
-
-      // Show success message
-      setIsSubmitting(false);
+      const res = await fetch("http://localhost:5000/api/threads", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: formData.title,
+          content: formData.content,
+          category: formData.category,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to create thread");
+      }
+      toast.success("Thread created successfully!");
       setShowSuccess(true);
-
-      // Reset form
       setFormData({
         title: "",
         content: "",
         category: "Discussion",
       });
       setImagePreview(null);
-
-      // Redirect to dashboard after 2 seconds
-
       setTimeout(() => {
         router.push("/home");
       }, 2000);
-    }, 1000);
+    } catch (error) {
+      console.error(error);
+      toast.error("An error occurred while creating the thread.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -324,7 +338,7 @@ export default function CreateThreadPage() {
             </Card>
 
             {/* Tips Card */}
-            <Card className=" border-t-2 bg-linear-to-br from-blue-50 to-purple-50 border-blue-200 shadow-sm ">
+            {/* <Card className=" border-t-2 bg-linear-to-br from-blue-50 to-purple-50 border-blue-200 shadow-sm ">
               <CardHeader>
                 <CardTitle className="text-lg">
                   💡 Tips for Creating Great Threads
@@ -352,7 +366,7 @@ export default function CreateThreadPage() {
                   before posting
                 </p>
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
         </PageTransition>
       </div>

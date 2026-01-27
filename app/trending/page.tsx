@@ -55,12 +55,14 @@ export default function TrendingPage() {
   }, [router]);
 
   const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
+    return (
+      name
+        // .split(" ")
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    );
   };
 
   const getCategoryColor = (category: string) => {
@@ -93,7 +95,7 @@ export default function TrendingPage() {
     .filter((t) => t.views < 200 && t.replies > 2)
     .sort(
       (a, b) =>
-        b.replies / Math.max(b.views, 1) - a.replies / Math.max(a.views, 1)
+        b.replies / Math.max(b.views, 1) - a.replies / Math.max(a.views, 1),
     )
     .slice(0, 10);
 
@@ -157,7 +159,7 @@ export default function TrendingPage() {
 
               <Badge
                 className={`${getCategoryColor(
-                  thread.category
+                  thread.category,
                 )} text-white text-[10px] h-4`}
               >
                 {thread.category}

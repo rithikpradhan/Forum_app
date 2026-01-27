@@ -1,6 +1,3 @@
-// src/app/profile/page.tsx
-// User profile page showing stats, threads, and edit functionality
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,9 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import imageCompression from "browser-image-compression";
 import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
-
 import {
   Select,
   SelectContent,
@@ -30,122 +28,176 @@ import {
   X,
   MessageSquare,
   TrendingUp,
-  Eye,
   Award,
-  CheckCircle2,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 type Thread = {
-  id: number;
+  _id: string;
   title: string;
   content: string;
-  author: string;
   category: string;
   replies: number;
-  views: number;
   createdAt: string;
+  author: {
+    _id: string;
+    name: string;
+  };
 };
+
+type UserProfile = {
+  _id: string;
+  name: string;
+  email: string;
+  bio: string;
+  avatar?: string;
+  joinedDate: string;
+};
+
+type Stats = {
+  totalThreads: number;
+  totalMessages: number;
+  totalViews: number;
+  totalReplies: number;
+  avgReplies: number;
+};
+
+const toBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState<{
-    name: string;
-    email: string;
-    bio?: string;
-    joinedDate?: string;
-    avatar?: string;
-  } | null>(null);
-  const [userThreads, setUserThreads] = useState<Thread[]>([]);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [editForm, setEditForm] = useState({
     name: "",
     bio: "",
+    avatar: "",
   });
+  const [filterCategory, setFilterCategory] = useState("all");
 
-  // Load user data and threads
+  // Load profile data
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) {
+    const token = localStorage.getItem("token");
+    if (!token) {
       router.push("/");
       return;
     }
 
-    const parsedUser = JSON.parse(userData);
-
-    // Add default values if they don't exist
-    if (!parsedUser.bio) {
-      parsedUser.bio =
-        "Passionate about technology and learning. Love to share knowledge with the community!";
-    }
-    if (!parsedUser.joinedDate) {
-      parsedUser.joinedDate = "January 2025";
-    }
-
-    setUser(parsedUser);
-    setEditForm({
-      name: parsedUser.name,
-      bio: parsedUser.bio || "",
-    });
-
-    // Load user's threads
-    const storedThreads = localStorage.getItem("threads");
-    if (storedThreads) {
-      const allThreads = JSON.parse(storedThreads);
-      const myThreads = allThreads.filter(
-        (t: Thread) => t.author === parsedUser.name
-      );
-      setUserThreads(myThreads);
-    }
-
-    setLoading(false);
+    loadProfile();
   }, [router]);
 
-  // Calculate user statistics
-  const totalThreads = userThreads.length;
-  const totalReplies = userThreads.reduce((sum, t) => sum + t.replies, 0);
-  const totalViews = userThreads.reduce((sum, t) => sum + t.views, 0);
-  const avgReplies =
-    totalThreads > 0 ? Math.round(totalReplies / totalThreads) : 0;
+  const loadProfile = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/users/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-  // Handle profile update
-  const handleSaveProfile = () => {
-    if (!user) return;
+      if (!res.ok) {
+        throw new Error("Failed to load profile");
+      }
 
-    const updatedUser = {
-      ...user,
-      name: editForm.name,
-      bio: editForm.bio,
-    };
+      const data = await res.json();
+      console.log("📋 Profile loaded:", data);
 
-    // Save to localStorage
-    localStorage.setItem("user", JSON.stringify(updatedUser));
-    setUser(updatedUser);
-    setIsEditing(false);
-
-    // Show success message
-    alert("Profile updated successfully!");
+      setUser(data.user);
+      setStats(data.stats);
+      setThreads(data.threads);
+      setEditForm({
+        name: data.user.name,
+        bio: data.user.bio,
+        avatar: data.user.avatar || "",
+      });
+    } catch (error) {
+      console.error("Failed to load profile:", error);
+      toast.error("Failed to load profile");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle profile update
+  const handleSaveProfile = async () => {
+    if (!editForm.name.trim()) {
+      toast.error("Name cannot be empty");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:5000/api/users/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: editForm.name,
+          bio: editForm.bio,
+          avatar: editForm.avatar,
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update profile");
+      }
+
+      const data = await res.json();
+      setUser(data.user);
+      setIsEditing(false);
+      toast.success("Profile updated successfully!");
+    } catch (error: any) {
+      console.error("Failed to update profile:", error);
+      toast.error(error.message || "Failed to update profile");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const updatedUser = {
-        ...user!,
-        avatar: reader.result as string,
-      };
+    try {
+      // 🔹 Compress image BEFORE converting to base64
+      const compressedFile = await imageCompression(file, {
+        maxSizeMB: 0.4,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+      });
 
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-      setUser(updatedUser);
-    };
+      // 🔹 Convert compressed image to base64
+      const base64 = await toBase64(compressedFile as File);
 
-    reader.readAsDataURL(file);
+      // 🔹 Save in state (same as before)
+      setEditForm((prev) => ({
+        ...prev,
+        avatar: base64,
+      }));
+    } catch (error) {
+      console.error("Image processing failed:", error);
+      toast.error("Failed to process image");
+    }
   };
 
   const getInitials = (name: string) => {
+    if (!name) return "??";
     return name
       .split(" ")
       .map((w) => w[0])
@@ -165,15 +217,38 @@ export default function ProfilePage() {
     return colors[category] || "bg-gray-500";
   };
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  };
+
+  const formatThreadDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p className="text-lg">Loading profile...</p>
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     );
   }
 
-  if (!user) return null;
+  if (!user || !stats) return null;
+
+  // Filter threads by category
+  const filteredThreads =
+    filterCategory === "all"
+      ? threads
+      : threads.filter((t) => t.category === filterCategory);
 
   return (
     <div className="flex h-screen bg-slate-50">
@@ -183,35 +258,27 @@ export default function ProfilePage() {
 
       <div className="flex-1 overflow-auto pb-20 lg:pb-0">
         <PageTransition>
-          <div className="max-w-8xl mx-auto p-8 space-y-8">
+          <div className="max-w-8xl mx-auto p-4 sm:p-8 space-y-6 sm:space-y-8">
             {/* PROFILE HEADER CARD */}
-            <Card className="shadow-lg bg-linear-to-r from-blue-500 to-purple-600 text-white">
+            <Card className="shadow-lg bg-gradient-to-tl from-red-50 to-indigo-600 text-white">
               <CardContent className="pt-6">
                 <div className="flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
-                  {/* Large Avatar */}
-                  {/* <Avatar className="h-32 w-32 border-4 border-white shadow-xl">
-                    <AvatarFallback className="bg-linear-to-br from-blue-700 to-purple-700 text-white text-4xl">
-                      {getInitials(user.name)}
-                    </AvatarFallback>
-                  </Avatar> */}
-
-                  <Avatar className="h-32 w-32 border-4 border-white shadow-xl relative group">
-                    {user.avatar ? (
+                  {/* Avatar */}
+                  <Avatar className="h-24 sm:h-32 w-24 sm:w-32 border-4 border-white shadow-xl relative group">
+                    {(isEditing ? editForm.avatar : user.avatar) ? (
                       <img
-                        src={user.avatar}
+                        src={isEditing ? editForm.avatar : user.avatar}
                         alt="Profile"
                         className="h-full w-full object-cover rounded-full"
                       />
                     ) : (
-                      <AvatarFallback className="bg-linear-to-br from-blue-700 to-purple-700 text-white text-4xl">
+                      <AvatarFallback className="bg-gradient-to-br from-blue-700 to-purple-700 text-white text-2xl sm:text-4xl">
                         {getInitials(user.name)}
                       </AvatarFallback>
                     )}
 
-                    {/* Upload Overlay */}
-
                     {isEditing && (
-                      <label className="absolute inset-0 bg-black/40 text-white text-sm flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer rounded-full transition">
+                      <label className="absolute inset-0 bg-black/40 text-white text-xs sm:text-sm flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer rounded-full transition">
                         Change
                         <input
                           type="file"
@@ -227,8 +294,10 @@ export default function ProfilePage() {
                   <div className="flex-1 text-center md:text-left">
                     {!isEditing ? (
                       <>
-                        <h1 className="text-3xl font-bold mb-2">{user.name}</h1>
-                        <div className="flex flex-col md:flex-row items-center md:items-start space-y-2 md:space-y-0 md:space-x-4 text-blue-100 mb-3">
+                        <h1 className="text-2xl sm:text-3xl font-bold mb-2">
+                          {user.name}
+                        </h1>
+                        <div className="flex flex-col md:flex-row items-center md:items-start space-y-2 md:space-y-0 md:space-x-4 text-blue-100 mb-3 text-sm">
                           <span className="flex items-center">
                             <Mail className="h-4 w-4 mr-2" />
                             {user.email}
@@ -236,51 +305,69 @@ export default function ProfilePage() {
                           <span className="hidden md:inline">•</span>
                           <span className="flex items-center">
                             <Calendar className="h-4 w-4 mr-2" />
-                            Joined {user.joinedDate}
+                            Joined {formatDate(user.joinedDate)}
                           </span>
                         </div>
-                        <p className="text-blue-100 max-w-2xl">{user.bio}</p>
+                        <p className="text-blue-100 max-w-2xl text-sm sm:text-base">
+                          {user.bio}
+                        </p>
                       </>
                     ) : (
                       <div className="space-y-4 bg-white/10 p-4 rounded-lg backdrop-blur-sm">
                         <div>
-                          <Label className="text-white mb-2 block">Name</Label>
+                          <Label className="text-white mb-2 block text-sm">
+                            Name
+                          </Label>
                           <Input
                             value={editForm.name}
                             onChange={(e) =>
                               setEditForm({ ...editForm, name: e.target.value })
                             }
                             className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
+                            maxLength={50}
                           />
                         </div>
                         <div>
-                          <Label className="text-white mb-2 block">Bio</Label>
-                          <Input
+                          <Label className="text-white mb-2 block text-sm">
+                            Bio
+                          </Label>
+                          <Textarea
                             value={editForm.bio}
                             onChange={(e) =>
                               setEditForm({ ...editForm, bio: e.target.value })
                             }
-                            className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
+                            className="bg-white/20 border-white/30 text-white placeholder:text-white/60 min-h-[80px]"
+                            maxLength={500}
                           />
                         </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Edit Button */}
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-4 md:mt-0">
+                  {/* Edit Buttons */}
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                     {!isEditing ? (
                       <Button
                         variant="secondary"
                         onClick={() => setIsEditing(true)}
+                        className="w-full sm:w-auto"
                       >
                         <Edit3 className="h-4 w-4 mr-2" />
                         Edit Profile
                       </Button>
                     ) : (
                       <>
-                        <Button variant="secondary" onClick={handleSaveProfile}>
-                          <Save className="h-4 w-4 mr-2" />
+                        <Button
+                          variant="secondary"
+                          onClick={handleSaveProfile}
+                          disabled={isSaving}
+                          className="w-full sm:w-auto"
+                        >
+                          {isSaving ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Save className="h-4 w-4 mr-2" />
+                          )}
                           Save
                         </Button>
                         <Button
@@ -289,10 +376,12 @@ export default function ProfilePage() {
                             setIsEditing(false);
                             setEditForm({
                               name: user.name,
-                              bio: user.bio || "",
+                              bio: user.bio,
+                              avatar: user.avatar || "",
                             });
                           }}
-                          className="text-white hover:bg-white/20"
+                          disabled={isSaving}
+                          className="text-white hover:bg-white/20 w-full sm:w-auto"
                         >
                           <X className="h-4 w-4 mr-2" />
                           Cancel
@@ -305,142 +394,83 @@ export default function ProfilePage() {
             </Card>
 
             {/* STATISTICS GRID */}
-            <div className="grid  grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    Total Threads
+                  <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">
+                    Threads
                   </CardTitle>
                   <MessageSquare className="h-4 w-4 text-gray-400" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-blue-600">
-                    {totalThreads}
+                  <div className="text-2xl sm:text-3xl font-bold text-blue-600">
+                    {stats.totalThreads}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Discussions started
-                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Started</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    Total Replies
+                  <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">
+                    Messages
                   </CardTitle>
                   <TrendingUp className="h-4 w-4 text-gray-400" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-green-600">
-                    {totalReplies}
+                  <div className="text-2xl sm:text-3xl font-bold text-green-600">
+                    {stats.totalMessages}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Community engagement
-                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Sent</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    Total Views
-                  </CardTitle>
-                  <Eye className="h-4 w-4 text-gray-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-purple-600">
-                    {totalViews}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">People reached</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    Avg. Replies
+                  <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">
+                    Replies
                   </CardTitle>
                   <Award className="h-4 w-4 text-gray-400" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-orange-600">
-                    {avgReplies}
+                  <div className="text-2xl sm:text-3xl font-bold text-orange-600">
+                    {stats.totalReplies}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Per thread</p>
+                  <p className="text-xs text-gray-500 mt-1">Received</p>
                 </CardContent>
               </Card>
             </div>
-
-            {/* ACHIEVEMENTS SECTION */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Award className="h-5 w-5 mr-2 text-yellow-500" />
-                  Achievements
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-                  <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
-                    <CheckCircle2 className="h-8 w-8 text-blue-500" />
-                    <div>
-                      <p className="font-semibold">First Thread</p>
-                      <p className="text-sm text-gray-600">
-                        Posted your first discussion
-                      </p>
-                    </div>
-                  </div>
-
-                  {totalThreads >= 5 && (
-                    <div className="flex items-center space-x-3 p-3 bg-green-50 rounded-lg">
-                      <CheckCircle2 className="h-8 w-8 text-green-500" />
-                      <div>
-                        <p className="font-semibold">Active Contributor</p>
-                        <p className="text-sm text-gray-600">
-                          Created 5+ threads
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {totalViews >= 100 && (
-                    <div className="flex items-center space-x-3 p-3 bg-purple-50 rounded-lg">
-                      <CheckCircle2 className="h-8 w-8 text-purple-500" />
-                      <div>
-                        <p className="font-semibold">Popular Creator</p>
-                        <p className="text-sm text-gray-600">
-                          100+ total views
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
 
             {/* MY THREADS SECTION */}
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <CardTitle>My Threads ({totalThreads})</CardTitle>
+                  <CardTitle className="text-lg sm:text-xl">
+                    My Threads ({filteredThreads.length})
+                  </CardTitle>
                   <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                    <Select>
-                      <span className="text-xs text-gray-600 mt-3">
-                        Category :
-                      </span>
+                    <Select
+                      value={filterCategory}
+                      onValueChange={setFilterCategory}
+                    >
                       <SelectTrigger className="w-full sm:w-[180px]">
-                        <SelectValue />
+                        <SelectValue placeholder="Category" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="recent">All</SelectItem>
-                        <SelectItem value="recent">Discussion</SelectItem>
-                        <SelectItem value="popular">Question</SelectItem>
-                        <SelectItem value="mostReplies">Tutorial</SelectItem>
-                        <SelectItem value="mostViews">Showcase</SelectItem>
-                        <SelectItem value="mostViews">Announcement</SelectItem>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        <SelectItem value="Discussion">Discussion</SelectItem>
+                        <SelectItem value="Question">Question</SelectItem>
+                        <SelectItem value="Tutorial">Tutorial</SelectItem>
+                        <SelectItem value="Showcase">Showcase</SelectItem>
+                        <SelectItem value="Announcement">
+                          Announcement
+                        </SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button onClick={() => router.push("/create")}>
+                    <Button
+                      onClick={() => router.push("/create")}
+                      className="w-full sm:w-auto"
+                    >
                       + Create New
                     </Button>
                   </div>
@@ -448,21 +478,19 @@ export default function ProfilePage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {userThreads.length > 0 ? (
-                    userThreads.map((thread) => (
+                  {filteredThreads.length > 0 ? (
+                    filteredThreads.map((thread) => (
                       <div
-                        key={thread.id}
-                        onClick={() => router.push(`/thread/${thread.id}`)}
-                        className="p-4 border rounded-lg hover:shadow-md transition-shadow cursor-pointer"
+                        key={thread._id}
+                        onClick={() => router.push(`/thread/${thread._id}`)}
+                        className="p-4 border rounded-lg hover:shadow-md transition-shadow cursor-pointer bg-white"
                       >
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
-                          <h3 className="font-semibold text-lg">
+                          <h3 className="font-semibold text-base sm:text-lg">
                             {thread.title}
                           </h3>
                           <Badge
-                            className={`${getCategoryColor(
-                              thread.category
-                            )} text-white`}
+                            className={`${getCategoryColor(thread.category)} text-white w-fit`}
                           >
                             {thread.category}
                           </Badge>
@@ -472,23 +500,30 @@ export default function ProfilePage() {
                           {thread.content}
                         </p>
 
-                        <div className="flex flex-wrap gap-3 text-sm text-gray-500">
+                        <div className="flex flex-wrap gap-3 text-xs sm:text-sm text-gray-500">
                           <span className="flex items-center">
                             <MessageSquare className="h-4 w-4 mr-1" />
-                            {thread.replies} replies
+                            {thread.replies}
                           </span>
-                          <span className="flex items-center">
-                            <Eye className="h-4 w-4 mr-1" />
-                            {thread.views} views
-                          </span>
-                          <span>{thread.createdAt}</span>
+
+                          <span>{formatThreadDate(thread.createdAt)}</span>
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p>No threads yet. Start sharing your ideas!</p>
+                    <div className="text-center py-12 text-gray-500">
+                      <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p className="text-base">
+                        {filterCategory === "all"
+                          ? "No threads yet. Start sharing your ideas!"
+                          : `No ${filterCategory} threads yet.`}
+                      </p>
+                      <Button
+                        onClick={() => router.push("/create")}
+                        className="mt-4"
+                      >
+                        Create Your First Thread
+                      </Button>
                     </div>
                   )}
                 </div>

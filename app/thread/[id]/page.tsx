@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { createSocket } from "@/lib/socket";
+import { Socket } from "socket.io-client";
+
 import { PageTransition } from "@/components/ui/page-transition";
 import {
   Dialog,
@@ -38,40 +41,41 @@ import {
   Trash2,
   Image as ImageIcon,
   X,
-  Heart,
   Users,
   MessageCircle,
   Pin,
   Reply as ReplyIcon,
   Info,
-  Clock,
-  Eye,
   ZoomIn,
 } from "lucide-react";
 import Image from "next/image";
 
 type Thread = {
-  id: number;
+  _id: string;
   title: string;
   content: string;
-  author: string;
   category: string;
-  replies: number;
-  views: number;
-  likes: number;
   createdAt: string;
+  views: number;
+  replies: number;
+  likes?: number;
   image?: string;
+  author: {
+    _id: string;
+    name: string;
+  };
 };
 
 type Reply = {
-  id: number;
-  threadId: number;
-  author: string;
+  _id: string;
+  thread: string;
   content: string;
-  likes: number;
-  createdAt: string;
   image?: string;
-  parentReplyId?: number;
+  createdAt: string;
+  author: {
+    _id: string;
+    name: string;
+  };
   replyingTo?: {
     name: string;
     content: string;
@@ -83,6 +87,7 @@ export default function ChatRoomThreadView() {
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const threadId = params.id as string;
 
   const [thread, setThread] = useState<Thread | null>(null);
   const [replies, setReplies] = useState<Reply[]>([]);
@@ -92,6 +97,14 @@ export default function ChatRoomThreadView() {
     avatar?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [onlineUsers, setOnlineUsers] = useState<
+    Array<{ userId: string; userName: string }>
+  >([]);
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [localSocket, setLocalSocket] = useState<Socket | null>(null);
 
   // Message input
   const [message, setMessage] = useState("");
@@ -118,175 +131,257 @@ export default function ChatRoomThreadView() {
   const [showInfo, setShowInfo] = useState(true);
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) {
+    const newSocket = createSocket();
+    setLocalSocket(newSocket);
+
+    return () => {
+      newSocket.disconnect();
+      newSocket.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
       router.push("/");
       return;
     }
-    setUser(JSON.parse(userData));
+    const loadThread = async () => {
+      try {
+        const token = localStorage.getItem("token");
 
-    const threadId = Number(params.id);
-    const storedThreads = localStorage.getItem("threads");
-
-    if (storedThreads) {
-      const threads = JSON.parse(storedThreads);
-      const foundThread = threads.find((t: Thread) => t.id === threadId);
-
-      if (foundThread) {
-        foundThread.views = (foundThread.views || 0) + 1;
-        const updatedThreads = threads.map((t: Thread) =>
-          t.id === threadId ? foundThread : t
+        const res = await fetch(
+          `http://localhost:5000/api/threads/${params.id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
         );
-        localStorage.setItem("threads", JSON.stringify(updatedThreads));
-        setThread(foundThread);
-        setEditThreadData({
-          title: foundThread.title,
-          content: foundThread.content,
-        });
-        setEditThreadImage(foundThread.image || null);
-      }
-    }
 
-    loadReplies(threadId);
-    setLoading(false);
+        if (!res.ok) throw new Error("Thread not found");
+        console.log("Thread id from URL: ", params.id);
+
+        const data = await res.json();
+        setThread(data.thread);
+        setReplies(data.messages);
+      } catch (err) {
+        console.error(err);
+        router.push("/home");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadThread();
   }, [params.id, router]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [replies]);
-
-  const loadReplies = (threadId: number) => {
-    const storedReplies = localStorage.getItem("replies");
-    if (storedReplies) {
-      const allReplies = JSON.parse(storedReplies);
-      const threadReplies = allReplies.filter(
-        (r: Reply) => r.threadId === threadId
-      );
-      setReplies(threadReplies);
-    }
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert("Image size must be less than 5MB");
-        return;
+    // Fetch user info
+    const loadUser = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch("http://localhost:5000/api/auth/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await res.json();
+        setUser(data.user);
+      } catch (err) {
+        console.error("Failed to load user info", err);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => setMessageImage(reader.result as string);
-      reader.readAsDataURL(file);
+    };
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [replies.length]);
+
+  useEffect(() => {
+    if (!threadId || !user || !thread || !localSocket) return;
+
+    const token = localStorage.getItem("token");
+    localSocket.auth = { token };
+    localSocket.connect();
+
+    const handleConnect = () => {
+      console.log("✅ Socket connected:", localSocket.id, "as", user.name);
+      localSocket.emit("joinThread", threadId);
+    };
+
+    const handleNewMessage = (newReply: Reply) => {
+      console.log("📨 New message received:", newReply);
+      setReplies((prev) => [...prev, newReply]);
+    };
+
+    // Online users handler
+    const handleOnlineUsers = (
+      users: Array<{ userId: string; userName: string }>,
+    ) => {
+      console.log("👥 Online users received:", users);
+      console.log("👥 Number of users:", users.length);
+      users.forEach((u, i) => {
+        console.log(`User ${i + 1}:`, {
+          userId: u.userId,
+          userName: u.userName,
+        });
+      });
+      setOnlineUsers(users);
+    };
+
+    // Typing indicator handler
+    const handleUserTyping = ({
+      userName,
+      isTyping,
+    }: {
+      userName: string;
+      isTyping: boolean;
+    }) => {
+      setTypingUsers((prev) => {
+        const newSet = new Set(prev);
+        if (isTyping) {
+          newSet.add(userName);
+        } else {
+          newSet.delete(userName);
+        }
+        return newSet;
+      });
+    };
+
+    localSocket.on("connect", handleConnect);
+    localSocket.on("newMessage", handleNewMessage);
+    localSocket.on("onlineUsers", handleOnlineUsers);
+    localSocket.on("userTyping", handleUserTyping);
+
+    return () => {
+      localSocket.off("connect", handleConnect);
+      localSocket.off("newMessage", handleNewMessage);
+      localSocket.off("onlineUsers", handleOnlineUsers);
+      localSocket.off("userTyping", handleUserTyping);
+      localSocket.disconnect();
+    };
+  }, [threadId, user, thread, localSocket]);
+
+  // Typing indicator logic
+  const handleTyping = (value: string) => {
+    setMessage(value);
+
+    if (!localSocket || !threadId) return;
+
+    // Emit typing start
+    if (!isTyping) {
+      setIsTyping(true);
+      localSocket.emit("typing", { threadId, isTyping: true });
     }
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set timeout to stop typing
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      localSocket.emit("typing", { threadId, isTyping: false });
+    }, 2000);
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  // Send message with proper reply handling
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() && !messageImage) return;
 
     setIsSubmitting(true);
 
-    const newReply: Reply = {
-      id: Date.now(),
-      threadId: Number(params.id),
-      author: user!.name,
-      content: message,
-      likes: 0,
-      createdAt: "Just now",
-      image: messageImage || undefined,
-      replyingTo: replyingTo
-        ? {
-            name: replyingTo.name,
-            content: replyingTo.content,
-          }
-        : undefined,
-    };
+    try {
+      const token = localStorage.getItem("token");
 
-    const updatedReplies = [...replies, newReply];
-    setReplies(updatedReplies);
+      const res = await fetch("http://localhost:5000/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          threadId,
+          content: message,
+          image: messageImage,
+          replyingTo: replyingTo
+            ? {
+                name: replyingTo.name,
+                content: replyingTo.content,
+              }
+            : undefined,
+        }),
+      });
 
-    const storedReplies = localStorage.getItem("replies");
-    const allReplies = storedReplies ? JSON.parse(storedReplies) : [];
-    allReplies.push(newReply);
-    localStorage.setItem("replies", JSON.stringify(allReplies));
-
-    if (thread) {
-      const updatedThread = { ...thread, replies: thread.replies + 1 };
-      setThread(updatedThread);
-
-      const storedThreads = localStorage.getItem("threads");
-      if (storedThreads) {
-        const threads = JSON.parse(storedThreads);
-        const updated = threads.map((t: Thread) =>
-          t.id === updatedThread.id ? updatedThread : t
-        );
-        localStorage.setItem("threads", JSON.stringify(updated));
+      if (!res.ok) {
+        throw new Error("Failed to send message");
       }
-    }
 
-    setMessage("");
-    setMessageImage(null);
-    setReplyingTo(null);
-    setIsSubmitting(false);
+      const newMessage = await res.json();
+      console.log("✅ Message sent:", newMessage);
+
+      setMessage("");
+      setMessageImage(null);
+      setReplyingTo(null);
+    } catch (err) {
+      console.error("❌ Failed to send message:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleEditThread = () => {
-    if (!thread || !user || thread.author !== user.name) return;
+  // Render typing indicator
+  const renderTypingIndicator = () => {
+    if (typingUsers.size === 0) return null;
 
-    const updatedThread = {
-      ...thread,
-      title: editThreadData.title,
-      content: editThreadData.content,
-      image: editThreadImage || undefined,
-    };
+    const typingArray = Array.from(typingUsers);
+    const typingText =
+      typingArray.length === 1
+        ? `${typingArray[0]} is typing...`
+        : `${typingArray.join(", ")} are typing...`;
 
-    setThread(updatedThread);
-
-    const storedThreads = localStorage.getItem("threads");
-    if (storedThreads) {
-      const threads = JSON.parse(storedThreads);
-      const updated = threads.map((t: Thread) =>
-        t.id === updatedThread.id ? updatedThread : t
-      );
-      localStorage.setItem("threads", JSON.stringify(updated));
-    }
-
-    setIsEditingThread(false);
+    return (
+      <div className="px-4 py-2 text-sm text-gray-500 italic flex items-center space-x-2">
+        <div className="flex space-x-1">
+          <div
+            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+            style={{ animationDelay: "0ms" }}
+          />
+          <div
+            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+            style={{ animationDelay: "150ms" }}
+          />
+          <div
+            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+            style={{ animationDelay: "300ms" }}
+          />
+        </div>
+        <span>{typingText}</span>
+      </div>
+    );
   };
 
-  const handleDeleteThread = () => {
-    if (!thread || !user || thread.author !== user.name) return;
-
-    const storedThreads = localStorage.getItem("threads");
-    if (storedThreads) {
-      const threads = JSON.parse(storedThreads);
-      const updated = threads.filter((t: Thread) => t.id !== thread.id);
-      localStorage.setItem("threads", JSON.stringify(updated));
-    }
-
-    const storedReplies = localStorage.getItem("replies");
-    if (storedReplies) {
-      const allReplies = JSON.parse(storedReplies);
-      const updated = allReplies.filter((r: Reply) => r.threadId !== thread.id);
-      localStorage.setItem("replies", JSON.stringify(updated));
-    }
-
-    router.push("/home");
-  };
-
-  const handleThreadImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert("Image size must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => setEditThreadImage(reader.result as string);
-      reader.readAsDataURL(file);
-    }
+  // Render online users count in header
+  const renderOnlineUsers = () => {
+    return (
+      <div className="flex items-center space-x-1 text-xs text-gray-600">
+        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+        <span>{onlineUsers.length} online</span>
+      </div>
+    );
   };
 
   const getInitials = (name: string) => {
+    console.log("🔍 getInitials called with:", name);
+    if (!name) {
+      console.log(" Name is undefined ");
+      return "??";
+    }
+
     return name
       .split(" ")
       .map((w) => w[0])
@@ -337,10 +432,11 @@ export default function ChatRoomThreadView() {
     );
   }
 
-  const isThreadAuthor = user && thread.author === user.name;
+  const isThreadAuthor = user?.name === thread.author.name;
   const participants = Array.from(
-    new Set([thread.author, ...replies.map((r) => r.author)])
+    new Set([thread.author.name, ...replies.map((r) => r.author.name)]),
   );
+
   const participantCount = participants.length;
 
   return (
@@ -370,11 +466,12 @@ export default function ChatRoomThreadView() {
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
                       <Badge
                         className={`${getCategoryColor(
-                          thread.category
+                          thread.category,
                         )} text-white h-4 text-[10px]`}
                       >
                         {thread.category}
                       </Badge>
+                      {renderOnlineUsers()}
                       <span className="flex items-center">
                         <Users className="h-3 w-3 mr-1" />
                         {participantCount}
@@ -435,12 +532,12 @@ export default function ChatRoomThreadView() {
                         className="h-9 w-9 cursor-pointer ring-2 ring-blue-300"
                         onClick={() =>
                           router.push(
-                            `/user/${encodeURIComponent(thread.author)}`
+                            `/user/${encodeURIComponent(thread.author.name)}`,
                           )
                         }
                       >
                         <AvatarFallback className="bg-linear-to-br from-blue-500 to-purple-500 text-white text-xs">
-                          {getInitials(thread.author)}
+                          {getInitials(thread.author.name)}
                         </AvatarFallback>
                       </Avatar>
 
@@ -450,17 +547,26 @@ export default function ChatRoomThreadView() {
                             className="font-bold text-sm cursor-pointer hover:underline"
                             onClick={() =>
                               router.push(
-                                `/user/${encodeURIComponent(thread.author)}`
+                                `/user/${encodeURIComponent(thread.author.name)}`,
                               )
                             }
                           >
-                            {thread.author}
+                            {thread.author.name}
                           </span>
                           <span className="text-xs text-gray-600">
                             started this discussion
                           </span>
                           <span className="text-xs text-gray-500">
-                            • {thread.createdAt}
+                            {new Date(thread.createdAt).toLocaleString(
+                              "en-IN",
+                              {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              },
+                            )}{" "}
                           </span>
                         </div>
 
@@ -490,13 +596,14 @@ export default function ChatRoomThreadView() {
 
                 {/* CHAT MESSAGES */}
                 {replies.map((reply, index) => {
-                  const isMyMessage = reply.author === user?.name;
+                  const isMyMessage = reply.author.name === user?.name;
                   const showAvatar =
-                    index === 0 || replies[index - 1].author !== reply.author;
+                    index === 0 ||
+                    replies[index - 1].author.name !== reply.author.name;
 
                   return (
                     <div
-                      key={reply.id}
+                      key={reply._id}
                       className={`flex items-start space-x-2 ${
                         isMyMessage ? "flex-row-reverse space-x-reverse" : ""
                       }`}
@@ -506,7 +613,7 @@ export default function ChatRoomThreadView() {
                           className="h-7 w-7 cursor-pointer shrink-0"
                           onClick={() =>
                             router.push(
-                              `/user/${encodeURIComponent(reply.author)}`
+                              `/user/${encodeURIComponent(reply.author.name)}`,
                             )
                           }
                         >
@@ -517,7 +624,7 @@ export default function ChatRoomThreadView() {
                                 : "bg-linear-to-br from-gray-500 to-gray-600"
                             }`}
                           >
-                            {getInitials(reply.author)}
+                            {getInitials(reply.author.name)}
                           </AvatarFallback>
                         </Avatar>
                       ) : (
@@ -541,14 +648,23 @@ export default function ChatRoomThreadView() {
                               className="font-semibold text-xs cursor-pointer hover:underline"
                               onClick={() =>
                                 router.push(
-                                  `/user/${encodeURIComponent(reply.author)}`
+                                  `/user/${encodeURIComponent(reply.author.name)}`,
                                 )
                               }
                             >
-                              {reply.author}
+                              {reply.author.name}
                             </span>
                             <span className="text-[10px] text-gray-500">
-                              {reply.createdAt}
+                              {new Date(thread.createdAt).toLocaleString(
+                                "en-IN",
+                                {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                },
+                              )}{" "}
                             </span>
                           </div>
                         )}
@@ -580,9 +696,9 @@ export default function ChatRoomThreadView() {
                           </div>
                         )}
 
-                        <div className="relative group">
+                        <div className="relative group flex gap-1">
                           <div
-                            className={`rounded-2xl px-2.5 py-1.5 text-[16px] ${
+                            className={`rounded-2xl  px-2.5 py-1 text-[16px] ${
                               isMyMessage
                                 ? "bg-green-200 text-black"
                                 : "bg-white border shadow-sm"
@@ -615,15 +731,13 @@ export default function ChatRoomThreadView() {
                               {highlightMentions(reply.content)}
                             </p>
                           </div>
-
-                          {/* Reply Button on Hover */}
                           {!isMyMessage && (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() =>
                                 setReplyingTo({
-                                  name: reply.author,
+                                  name: reply.author.name,
                                   content: reply.content,
                                 })
                               }
@@ -632,11 +746,15 @@ export default function ChatRoomThreadView() {
                               <ReplyIcon className="h-3 w-3" />
                             </Button>
                           )}
+
+                          {/* Reply Button on Hover */}
                         </div>
                       </div>
                     </div>
                   );
                 })}
+
+                {renderTypingIndicator()}
 
                 <div ref={messagesEndRef} />
               </div>
@@ -708,14 +826,14 @@ export default function ChatRoomThreadView() {
                       ref={fileInputRef}
                       type="file"
                       accept="image/*"
-                      onChange={handleImageUpload}
+                      // onChange={handleImageUpload}
                       className="hidden"
                     />
 
                     <Input
                       placeholder="Type a message..."
                       value={message}
-                      onChange={(e) => setMessage(e.target.value)}
+                      onChange={(e) => handleTyping(e.target.value)}
                       className="flex-1 h-9 text-sm"
                       disabled={isSubmitting}
                     />
@@ -742,46 +860,34 @@ export default function ChatRoomThreadView() {
             <div className="p-3 space-y-3">
               {/* Room Details */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase">
-                  Room Details
+                <h3 className="text-sm font-semibold text-gray-700 mb-2  flex items-center">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse text-gray-500" />
+                  Online Now ({onlineUsers.length})
                 </h3>
                 <Card className="shadow-md px-4">
                   <CardContent className="p-2 space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Started by</span>
-                      <span
-                        className="font-semibold cursor-pointer hover:underline"
-                        onClick={() =>
-                          router.push(
-                            `/user/${encodeURIComponent(thread.author)}`
-                          )
-                        }
-                      >
-                        {thread.author}
-                      </span>
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600 flex items-center">
-                        <Clock className="h-3 w-3 mr-1" />
-                        Created
-                      </span>
-                      <span>{thread.createdAt}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600 flex items-center">
-                        <Eye className="h-3 w-3 mr-1" />
-                        Views
-                      </span>
-                      <span className="font-semibold">{thread.views}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600 flex items-center">
-                        <Heart className="h-3 w-3 mr-1" />
-                        Likes
-                      </span>
-                      <span className="font-semibold">{thread.likes || 0}</span>
-                    </div>
+                    {onlineUsers.length > 0 ? (
+                      onlineUsers.map((onlineUser) => (
+                        <div
+                          key={onlineUser.userId}
+                          className="flex items-center space-x-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer"
+                        >
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="bg-linear-to-br from-green-500 to-emerald-600 text-white text-[10px]">
+                              {getInitials(onlineUser.userName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium truncate flex-1">
+                            {onlineUser.userName || "Unknown User"}
+                          </span>
+                          <div className="w-2 h-2 bg-green-500 rounded-full" />
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-500 p-2">
+                        No users online
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -800,19 +906,19 @@ export default function ChatRoomThreadView() {
                         className="flex items-center space-x-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer"
                         onClick={() =>
                           router.push(
-                            `/user/${encodeURIComponent(participant)}`
+                            `/user/${encodeURIComponent(participant)}`,
                           )
                         }
                       >
                         <Avatar className="h-6 w-6">
-                          <AvatarFallback className="bg-linear-to-br from-blue-500 to-purple-500 text-white text-[10px]">
+                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-[10px]">
                             {getInitials(participant)}
                           </AvatarFallback>
                         </Avatar>
                         <span className="text-xs font-medium truncate flex-1">
                           {participant}
                         </span>
-                        {participant === thread.author && (
+                        {participant === thread.author.name && (
                           <Badge className="h-4 text-[9px] bg-blue-500">
                             Host
                           </Badge>
@@ -946,9 +1052,9 @@ export default function ChatRoomThreadView() {
             >
               Cancel
             </Button>
-            <Button onClick={handleEditThread} size="sm">
+            {/* <Button onClick={handleEditThread} size="sm">
               Save Changes
-            </Button>
+            </Button> */}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -965,12 +1071,12 @@ export default function ChatRoomThreadView() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            {/* <AlertDialogAction
               onClick={handleDeleteThread}
               className="bg-red-600 hover:bg-red-700"
             >
               Delete Chat Room
-            </AlertDialogAction>
+            </AlertDialogAction> */}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

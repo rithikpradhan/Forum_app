@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MobileBottomNav } from "@/components/ui/mobile-bottom-nav";
 
 export default function LandingPage() {
   // useRouter lets us navigate to different pages programmatically
@@ -34,40 +33,64 @@ export default function LandingPage() {
   });
 
   // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault(); // Prevent page reload
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    // In a REAL app, you'd:
-    // 1. Send data to your backend API
-    // 2. Verify credentials with database
-    // 3. Create a session/JWT token
-    // 4. Store user info in localStorage or cookies
+    try {
+      const endpoint =
+        mode === "login"
+          ? "http://localhost:5000/api/auth/login"
+          : "http://localhost:5000/api/auth/register";
 
-    // For learning purposes, we'll simulate authentication
-    // Store user info in localStorage (browser storage)
-    const user = {
-      name: formData.name || formData.email.split("@")[0], // Extract name from email if not provided
-      email: formData.email,
-      loggedIn: true,
-    };
+      const payload =
+        mode === "login"
+          ? {
+              email: formData.email,
+              password: formData.password,
+            }
+          : {
+              name: formData.name,
+              email: formData.email,
+              password: formData.password,
+            };
 
-    // localStorage.setItem saves data in the browser
-    // JSON.stringify converts JavaScript object to text
-    localStorage.setItem("user", JSON.stringify(user));
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
-    // Navigate to dashboard after "login"
-    router.push("/home");
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Something went wrong");
+        return;
+      }
+
+      // Save JWT token
+      localStorage.setItem("token", data.token);
+
+      // Optional: save user info
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      router.push("/home");
+    } catch (error) {
+      console.error(error);
+      alert("Server error");
+    }
   };
 
   return (
     // Full screen container with gradient background
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-pink-500 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-r from-violet-200 to-pink-200 flex items-center justify-center p-4">
       {/* Main content container */}
       <div className="w-full max-w-6xl grid md:grid-cols-2 gap-8 items-center">
         {/* LEFT SIDE - Branding & Description */}
-        <div className="text-white space-y-6">
+        <div className="text-black space-y-6">
           <div className="space-y-4">
-            <h1 className="text-5xl font-bold">💬 ForumHub</h1>
+            <h1 className="text-5xl font-bold">ForumHub</h1>
             <p className="text-2xl font-light">
               Connect, Share, and Learn Together
             </p>
@@ -78,7 +101,7 @@ export default function LandingPage() {
               <span className="text-2xl">✨</span>
               <div>
                 <h3 className="font-semibold">Share Your Ideas</h3>
-                <p className="text-blue-100">
+                <p className="text-gray-700">
                   Start discussions on topics youre passionate about
                 </p>
               </div>
@@ -88,18 +111,8 @@ export default function LandingPage() {
               <span className="text-2xl">🚀</span>
               <div>
                 <h3 className="font-semibold">Learn from Others</h3>
-                <p className="text-blue-100">
+                <p className="text-gray-700">
                   Discover insights from our vibrant community
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <span className="text-2xl">🤝</span>
-              <div>
-                <h3 className="font-semibold">Build Connections</h3>
-                <p className="text-blue-100">
-                  Network with like-minded individuals
                 </p>
               </div>
             </div>

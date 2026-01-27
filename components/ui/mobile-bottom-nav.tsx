@@ -6,9 +6,7 @@ import clsx from "clsx";
 
 const navItems = [
   { label: "Home", icon: Home, path: "/home" },
-  { label: "Explore", icon: Compass, path: "/trending" },
   { label: "Create", icon: PlusSquare, path: "/create" },
-  { label: "Chat", icon: MessageSquare, path: "/categories" },
   { label: "Profile", icon: User, path: "/profile" },
 ];
 
@@ -28,7 +26,7 @@ export function MobileBottomNav() {
               onClick={() => router.push(path)}
               className={clsx(
                 "flex flex-col items-center justify-center text-xs transition-colors",
-                active ? "text-indigo-600" : "text-gray-500"
+                active ? "text-indigo-600" : "text-gray-500",
               )}
             >
               <Icon
