@@ -151,7 +151,7 @@ export default function ChatRoomThreadView() {
         const token = localStorage.getItem("token");
 
         const res = await fetch(
-          `http://localhost:5000/api/threads/${params.id}`,
+          `https://forum-backend-u97g.onrender.com/api/threads/${params.id}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -181,7 +181,7 @@ export default function ChatRoomThreadView() {
     const loadUser = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch("http://localhost:5000/api/auth/me", {
+        const res = await fetch("https://forum-backend-u97g.onrender.com/api/auth/me", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -298,7 +298,7 @@ export default function ChatRoomThreadView() {
     try {
       const token = localStorage.getItem("token");
 
-      const res = await fetch("http://localhost:5000/api/messages", {
+      const res = await fetch("https://forum-backend-u97g.onrender.com/api/messages", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

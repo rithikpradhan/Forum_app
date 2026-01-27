@@ -73,11 +73,14 @@ export default function CreateThreadPage() {
 
     const verifyUser = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/auth/me", {
-          headers: {
-            Authorization: `Bearer ${token}`,
+        const res = await fetch(
+          "https://forum-backend-u97g.onrender.com/api/auth/me",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
           },
-        });
+        );
 
         if (!res.ok) {
           localStorage.removeItem("token");
@@ -128,18 +131,21 @@ export default function CreateThreadPage() {
     try {
       const token = localStorage.getItem("token");
 
-      const res = await fetch("http://localhost:5000/api/threads", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const res = await fetch(
+        "https://forum-backend-u97g.onrender.com/api/threads",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            title: formData.title,
+            content: formData.content,
+            category: formData.category,
+          }),
         },
-        body: JSON.stringify({
-          title: formData.title,
-          content: formData.content,
-          category: formData.category,
-        }),
-      });
+      );
       if (!res.ok) {
         throw new Error("Failed to create thread");
       }

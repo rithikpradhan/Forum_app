@@ -100,11 +100,14 @@ export default function ProfilePage() {
   const loadProfile = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/users/profile", {
-        headers: {
-          Authorization: `Bearer ${token}`,
+      const res = await fetch(
+        "https://forum-backend-u97g.onrender.com/api/users/profile",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      });
+      );
 
       if (!res.ok) {
         throw new Error("Failed to load profile");
@@ -140,18 +143,21 @@ export default function ProfilePage() {
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/users/profile", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const res = await fetch(
+        "https://forum-backend-u97g.onrender.com/api/users/profile",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: editForm.name,
+            bio: editForm.bio,
+            avatar: editForm.avatar,
+          }),
         },
-        body: JSON.stringify({
-          name: editForm.name,
-          bio: editForm.bio,
-          avatar: editForm.avatar,
-        }),
-      });
+      );
 
       if (!res.ok) {
         const error = await res.json();
