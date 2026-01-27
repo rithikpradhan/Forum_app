@@ -39,8 +39,8 @@ export default function LandingPage() {
     try {
       const endpoint =
         mode === "login"
-          ? "http://localhost:5000/api/auth/login"
-          : "http://localhost:5000/api/auth/register";
+          ? "https://forum-backend-u97g.onrender.com/api/auth/login"
+          : "https://forum-backend-u97g.onrender.com/api/auth/register";
 
       const payload =
         mode === "login"
