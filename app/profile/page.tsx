@@ -114,7 +114,7 @@ export default function ProfilePage() {
       }
 
       const data = await res.json();
-      console.log("📋 Profile loaded:", data);
+      console.log("Profile loaded:", data);
 
       setUser(data.user);
       setStats(data.stats);

@@ -202,13 +202,13 @@ export default function ExplorePage() {
                     className="pl-10 py-5 border-gray-300 w-full sm:w-64"
                   />
                 </div>
-                <Button
+                {/* <Button
                   variant="outline"
                   onClick={() => router.push("/create")}
                   className="p-5 w-full sm:w-auto hover:border-gray-400"
                 >
                   + Create Thread
-                </Button>
+                </Button> */}
               </div>
             </div>
 
