@@ -131,13 +131,15 @@ export default function ChatRoomThreadView() {
   const [showInfo, setShowInfo] = useState(true);
 
   useEffect(() => {
-    const newSocket = createSocket();
-    setLocalSocket(newSocket);
+    if (typeof window !== "undefined") {
+      const newSocket = createSocket();
+      setLocalSocket(newSocket);
 
-    return () => {
-      newSocket.disconnect();
-      newSocket.close();
-    };
+      return () => {
+        newSocket.disconnect();
+        newSocket.close();
+      };
+    }
   }, []);
 
   useEffect(() => {
@@ -181,11 +183,14 @@ export default function ChatRoomThreadView() {
     const loadUser = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch("https://forum-backend-u97g.onrender.com/api/auth/me", {
-          headers: {
-            Authorization: `Bearer ${token}`,
+        const res = await fetch(
+          "https://forum-backend-u97g.onrender.com/api/auth/me",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
           },
-        });
+        );
         const data = await res.json();
         setUser(data.user);
       } catch (err) {
@@ -200,38 +205,64 @@ export default function ChatRoomThreadView() {
   }, [replies.length]);
 
   useEffect(() => {
-    if (!threadId || !user || !thread || !localSocket) return;
+    if (!threadId || !user || !thread || !localSocket) {
+      console.log("⏸️ Socket not ready:", {
+        threadId: !!threadId,
+        user: !!user,
+        thread: !!thread,
+        socket: !!localSocket,
+      });
+      return;
+    }
 
     const token = localStorage.getItem("token");
     localSocket.auth = { token };
+
+    console.log("🔌 Connecting socket to thread:", threadId);
+    console.log("👤 User:", user.name);
+
     localSocket.connect();
 
     const handleConnect = () => {
-      console.log("✅ Socket connected:", localSocket.id, "as", user.name);
+      console.log("✅ Socket CONNECTED:", localSocket.id);
+      console.log("🚀 Transport:", localSocket.io.engine.transport.name);
+      console.log("📍 Joining thread:", threadId);
+      localSocket.emit("joinThread", threadId);
+    };
+
+    const handleConnectError = (error: any) => {
+      console.error("❌ Connect error:", error.message);
+      console.log("Current transport:", localSocket.io.engine?.transport?.name);
+    };
+
+    const handleDisconnect = (reason: string) => {
+      console.log("🔌 Disconnected:", reason);
+      if (reason === "io server disconnect") {
+        console.log("Server disconnected, will reconnect manually");
+        localSocket.connect();
+      }
+    };
+
+    const handleReconnect = (attemptNumber: number) => {
+      console.log("✅ Reconnected after", attemptNumber, "attempts");
       localSocket.emit("joinThread", threadId);
     };
 
     const handleNewMessage = (newReply: Reply) => {
-      console.log("📨 New message received:", newReply);
-      setReplies((prev) => [...prev, newReply]);
+      console.log("📨 NEW MESSAGE:", newReply);
+      setReplies((prev) => {
+        console.log("Adding message to", prev.length, "existing messages");
+        return [...prev, newReply];
+      });
     };
 
-    // Online users handler
     const handleOnlineUsers = (
       users: Array<{ userId: string; userName: string }>,
     ) => {
-      console.log("👥 Online users received:", users);
-      console.log("👥 Number of users:", users.length);
-      users.forEach((u, i) => {
-        console.log(`User ${i + 1}:`, {
-          userId: u.userId,
-          userName: u.userName,
-        });
-      });
+      console.log("👥 ONLINE USERS UPDATE:", users);
       setOnlineUsers(users);
     };
 
-    // Typing indicator handler
     const handleUserTyping = ({
       userName,
       isTyping,
@@ -239,6 +270,7 @@ export default function ChatRoomThreadView() {
       userName: string;
       isTyping: boolean;
     }) => {
+      console.log(`⌨️  ${userName} ${isTyping ? "started" : "stopped"} typing`);
       setTypingUsers((prev) => {
         const newSet = new Set(prev);
         if (isTyping) {
@@ -250,13 +282,21 @@ export default function ChatRoomThreadView() {
       });
     };
 
+    // Register all listeners
     localSocket.on("connect", handleConnect);
+    localSocket.on("connect_error", handleConnectError);
+    localSocket.on("disconnect", handleDisconnect);
+    localSocket.on("reconnect", handleReconnect);
     localSocket.on("newMessage", handleNewMessage);
     localSocket.on("onlineUsers", handleOnlineUsers);
     localSocket.on("userTyping", handleUserTyping);
 
     return () => {
+      console.log("🧹 Cleaning up socket for thread:", threadId);
       localSocket.off("connect", handleConnect);
+      localSocket.off("connect_error", handleConnectError);
+      localSocket.off("disconnect", handleDisconnect);
+      localSocket.off("reconnect", handleReconnect);
       localSocket.off("newMessage", handleNewMessage);
       localSocket.off("onlineUsers", handleOnlineUsers);
       localSocket.off("userTyping", handleUserTyping);
@@ -295,34 +335,68 @@ export default function ChatRoomThreadView() {
 
     setIsSubmitting(true);
 
+    // Stop typing indicator
+    if (isTyping && localSocket) {
+      setIsTyping(false);
+      localSocket.emit("typing", { threadId, isTyping: false });
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    }
+
     try {
       const token = localStorage.getItem("token");
 
-      const res = await fetch("https://forum-backend-u97g.onrender.com/api/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          threadId,
-          content: message,
-          image: messageImage,
-          replyingTo: replyingTo
-            ? {
-                name: replyingTo.name,
-                content: replyingTo.content,
-              }
-            : undefined,
-        }),
+      // FIX: Find the actual message _id from replies array
+      let replyingToId = null;
+      if (replyingTo) {
+        const replyMessage = replies.find(
+          (r) =>
+            r.author.name === replyingTo.name &&
+            r.content === replyingTo.content,
+        );
+
+        if (replyMessage) {
+          replyingToId = replyMessage._id;
+          console.log("🔗 Replying to message ID:", replyingToId);
+          console.log("🔗 Message content:", replyMessage.content);
+        } else {
+          console.warn("⚠️ Could not find message to reply to");
+        }
+      }
+
+      console.log("📤 Sending message with:", {
+        threadId,
+        content: message,
+        replyingTo: replyingToId, // This should be a string ID or null
       });
 
+      const res = await fetch(
+        "https://forum-backend-u97g.onrender.com/api/messages",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            threadId,
+            content: message,
+            image: messageImage,
+            replyingTo: replyingToId, // CRITICAL: Send ID string, not object
+          }),
+        },
+      );
+
       if (!res.ok) {
+        const errorData = await res.json();
+        console.error("❌ Server error:", errorData);
         throw new Error("Failed to send message");
       }
 
       const newMessage = await res.json();
-      console.log("✅ Message sent:", newMessage);
+      console.log("✅ Message sent successfully:", newMessage);
+      console.log("✅ Reply data in response:", newMessage.replyingTo);
 
       setMessage("");
       setMessageImage(null);
@@ -496,22 +570,22 @@ export default function ChatRoomThreadView() {
 
                   {isThreadAuthor && (
                     <>
-                      <Button
+                      {/* <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setIsEditingThread(true)}
                         className="h-8 px-2"
                       >
                         <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button
+                      </Button> */}
+                      {/* <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setShowDeleteDialog(true)}
                         className="h-8 px-2 text-red-600 hover:text-red-700"
                       >
                         <Trash2 className="h-3 w-3" />
-                      </Button>
+                      </Button> */}
                     </>
                   )}
                 </div>
@@ -604,9 +678,7 @@ export default function ChatRoomThreadView() {
                   return (
                     <div
                       key={reply._id}
-                      className={`flex items-start space-x-2 ${
-                        isMyMessage ? "flex-row-reverse space-x-reverse" : ""
-                      }`}
+                      className={`flex items-start space-x-2 ${isMyMessage ? "flex-row-reverse space-x-reverse" : ""}`}
                     >
                       {showAvatar ? (
                         <Avatar
@@ -618,11 +690,7 @@ export default function ChatRoomThreadView() {
                           }
                         >
                           <AvatarFallback
-                            className={`text-white text-[10px] ${
-                              isMyMessage
-                                ? "bg-linear-to-br from-green-500 to-emerald-600"
-                                : "bg-linear-to-br from-gray-500 to-gray-600"
-                            }`}
+                            className={`text-white text-[10px] ${isMyMessage ? "bg-linear-to-br from-green-500 to-emerald-600" : "bg-linear-to-br from-gray-500 to-gray-600"}`}
                           >
                             {getInitials(reply.author.name)}
                           </AvatarFallback>
@@ -632,17 +700,11 @@ export default function ChatRoomThreadView() {
                       )}
 
                       <div
-                        className={`flex-1 max-w-[85%] sm:max-w-lg ${
-                          isMyMessage ? "items-end" : "items-start"
-                        } flex flex-col`}
+                        className={`flex-1 max-w-[85%] sm:max-w-lg ${isMyMessage ? "items-end" : "items-start"} flex flex-col`}
                       >
                         {showAvatar && (
                           <div
-                            className={`flex items-center space-x-1.5 mb-0.5 ${
-                              isMyMessage
-                                ? "flex-row-reverse space-x-reverse"
-                                : ""
-                            }`}
+                            className={`flex items-center space-x-1.5 mb-0.5 ${isMyMessage ? "flex-row-reverse space-x-reverse" : ""}`}
                           >
                             <span
                               className="font-semibold text-xs cursor-pointer hover:underline"
@@ -655,7 +717,8 @@ export default function ChatRoomThreadView() {
                               {reply.author.name}
                             </span>
                             <span className="text-[10px] text-gray-500">
-                              {new Date(thread.createdAt).toLocaleString(
+                              {/* FIX: Use reply.createdAt instead of thread.createdAt */}
+                              {new Date(reply.createdAt).toLocaleString(
                                 "en-IN",
                                 {
                                   day: "2-digit",
@@ -664,7 +727,7 @@ export default function ChatRoomThreadView() {
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 },
-                              )}{" "}
+                              )}
                             </span>
                           </div>
                         )}
@@ -672,16 +735,10 @@ export default function ChatRoomThreadView() {
                         {/* REPLY REFERENCE - Shows which message was replied to */}
                         {reply.replyingTo && (
                           <div
-                            className={`mb-1 ${
-                              isMyMessage ? "self-end" : "self-start"
-                            }`}
+                            className={`mb-1 ${isMyMessage ? "self-end" : "self-start"}`}
                           >
                             <div
-                              className={`text-[14px] px-2 py-1 rounded-lg border-l-2 ${
-                                isMyMessage
-                                  ? "bg-blue-100 border-blue-600 text-blue-900"
-                                  : "bg-slate-200 border-gray-400 text-gray-700"
-                              }`}
+                              className={`text-[12px] px-2 py-1 rounded-lg border-l-2 ${isMyMessage ? "bg-blue-100 border-blue-600 text-blue-900" : "bg-slate-200 border-gray-400 text-gray-700"}`}
                             >
                               <div className="flex items-center space-x-1 mb-0.5">
                                 <ReplyIcon className="h-2.5 w-2.5" />
@@ -698,15 +755,11 @@ export default function ChatRoomThreadView() {
 
                         <div className="relative group flex gap-1">
                           <div
-                            className={`rounded-2xl  px-2.5 py-1 text-[16px] ${
-                              isMyMessage
-                                ? "bg-green-200 text-black"
-                                : "bg-white border shadow-sm"
-                            }`}
+                            className={`rounded-2xl px-2.5 py-1.5 text-[14px] ${isMyMessage ? "bg-green-200 text-black" : "bg-white border shadow-sm"}`}
                           >
                             {reply.image && (
                               <div
-                                className="relative cursor-pointer group/img mt-1 mb-5"
+                                className="relative cursor-pointer group/img mt-1 mb-1"
                                 onClick={() => setLightboxImage(reply.image!)}
                               >
                                 <img
@@ -714,23 +767,19 @@ export default function ChatRoomThreadView() {
                                   alt="Message"
                                   className="max-w-xs h-auto rounded-lg"
                                 />
-                                <div className="absolute inset-0 bg-opacity-0 group-hover/img:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
-                                  <ZoomIn
-                                    className="h-5 w-5 text-black
-                                   opacity-0 group-hover/img:opacity-100 transition-opacity"
-                                  />
+                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover/img:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
+                                  <ZoomIn className="h-5 w-5 text-white opacity-0 group-hover/img:opacity-100 transition-opacity" />
                                 </div>
                               </div>
                             )}
 
                             <p
-                              className={`leading-relaxed ${
-                                isMyMessage ? "text-black" : "text-gray-800"
-                              }`}
+                              className={`leading-relaxed ${isMyMessage ? "text-black" : "text-gray-800"}`}
                             >
                               {highlightMentions(reply.content)}
                             </p>
                           </div>
+
                           {!isMyMessage && (
                             <Button
                               variant="ghost"
@@ -741,13 +790,12 @@ export default function ChatRoomThreadView() {
                                   content: reply.content,
                                 })
                               }
-                              className=" opacity-0 group-hover:opacity-100 transition-opacity h-6 px-2"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity h-6 px-2 mt-1"
                             >
-                              <ReplyIcon className="h-3 w-3" />
+                              <ReplyIcon className="h-3 w-3 mr-1" />
+                              Reply
                             </Button>
                           )}
-
-                          {/* Reply Button on Hover */}
                         </div>
                       </div>
                     </div>

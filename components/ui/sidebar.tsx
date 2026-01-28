@@ -77,9 +77,12 @@ export function Sidebar() {
 
     const fetchUser = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/auth/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(
+          "https://forum-backend-u97g.onrender.com/api/auth/me",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
 
         if (!res.ok) {
           localStorage.removeItem("token");
